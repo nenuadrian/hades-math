@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Interactive Function Plot</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      #info {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background-color: rgba(255, 255, 255, 0.8);
+        padding: 10px;
+        border-radius: 8px;
+        font-family: Arial, sans-serif;
+      }
+      input[type="number"] {
+        width: 60px;
+        margin-right: 10px;
+      }
+      label {
+        margin-right: 10px;
+      }
+      table {
+        margin-top: 10px;
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        border: 1px solid #ddd;
+        padding: 8px;
+      }
+      th {
+        background-color: #f4f4f4;
+      }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+  </head>
+  <body>
+    <div id="info">
+      <label
+        >Amplitude: <input type="number" id="amplitude" value="1" step="0.1"
+      /></label>
+      <label
+        >Frequency: <input type="number" id="frequency" value="1" step="0.1"
+      /></label>
+      <button id="update">Update</button>
+      <div id="jacobian"></div>
+    </div>
+    <script>
+      // Scene setup
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(
+        75,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        1000
+      );
+      const renderer = new THREE.WebGLRenderer();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      // Add faint grid
+      const gridHelper = new THREE.GridHelper(20, 40, 0x888888, 0xcccccc);
+      scene.add(gridHelper);
+
+      // Axes helper
+      const axesHelper = new THREE.AxesHelper(10);
+      scene.add(axesHelper);
+
+      // Variables for function and integral
+      let functionLine, integralLine;
+
+      // Parameters for the function
+      let amplitude = 1;
+      let frequency = 1;
+
+      // Function and Integral Visualization
+      const drawFunctionAndIntegral = () => {
+        // Remove existing lines if any
+        if (functionLine) scene.remove(functionLine);
+        if (integralLine) scene.remove(integralLine);
+
+        const functionPoints = [];
+        const integralPoints = [];
+        let integralValue = 0;
+
+        const dx = 0.1; // Small step for integral
+        for (let x = -5; x <= 5; x += dx) {
+          const y = amplitude * Math.sin(frequency * x); // Function: amplitude * sin(frequency * x)
+          functionPoints.push(new THREE.Vector3(x, y, 0));
+
+          // Numerical integral calculation
+          integralValue += y * dx;
+          integralPoints.push(new THREE.Vector3(x, integralValue, 0));
+        }
+
+        // Create geometry for function
+        const functionGeometry = new THREE.BufferGeometry().setFromPoints(
+          functionPoints
+        );
+        const functionMaterial = new THREE.LineBasicMaterial({
+          color: 0xff0000,
+        });
+        functionLine = new THREE.Line(functionGeometry, functionMaterial);
+        scene.add(functionLine);
+
+        // Create geometry for integral
+        const integralGeometry = new THREE.BufferGeometry().setFromPoints(
+          integralPoints
+        );
+        const integralMaterial = new THREE.LineBasicMaterial({
+          color: 0x0000ff,
+        });
+        integralLine = new THREE.Line(integralGeometry, integralMaterial);
+        scene.add(integralLine);
+      };
+
+      // Jacobian calculation for parametric function
+      const calculateJacobian = () => {
+        const parametricFunction = (u, v) => {
+          return {
+            x: amplitude * Math.sin(u),
+            y: Math.cos(v),
+            z: u * v,
+          };
+        };
+
+        const u = Math.PI / 4;
+        const v = Math.PI / 4;
+
+        const h = 0.0001; // Small step for numerical differentiation
+
+        // Partial derivatives
+        const du = parametricFunction(u + h, v);
+        const dv = parametricFunction(u, v + h);
+        const f = parametricFunction(u, v);
+
+        const dFdu = {
+          x: (du.x - f.x) / h,
+          y: (du.y - f.y) / h,
+          z: (du.z - f.z) / h,
+        };
+
+        const dFdv = {
+          x: (dv.x - f.x) / h,
+          y: (dv.y - f.y) / h,
+          z: (dv.z - f.z) / h,
+        };
+
+        return [
+          [dFdu.x, dFdv.x],
+          [dFdu.y, dFdv.y],
+          [dFdu.z, dFdv.z],
+        ];
+      };
+
+      // Display Jacobian as HTML table
+      const displayJacobian = (jacobian) => {
+        const container = document.getElementById("jacobian");
+        container.innerHTML = ""; // Clear previous content
+
+        const table = document.createElement("table");
+        const headerRow = document.createElement("tr");
+        ["∂F/∂u", "∂F/∂v"].forEach((header) => {
+          const th = document.createElement("th");
+          th.innerText = header;
+          headerRow.appendChild(th);
+        });
+        table.appendChild(headerRow);
+
+        jacobian.forEach((row) => {
+          const tableRow = document.createElement("tr");
+          row.forEach((value) => {
+            const td = document.createElement("td");
+            td.innerText = value.toFixed(4);
+            tableRow.appendChild(td);
+          });
+          table.appendChild(tableRow);
+        });
+
+        container.appendChild(table);
+      };
+
+      // Update function on input change
+      const updateFunction = () => {
+        amplitude = parseFloat(document.getElementById("amplitude").value);
+        frequency = parseFloat(document.getElementById("frequency").value);
+        drawFunctionAndIntegral();
+        const jacobian = calculateJacobian();
+        displayJacobian(jacobian);
+      };
+
+      // Attach event listener to button
+      document
+        .getElementById("update")
+        .addEventListener("click", updateFunction);
+
+      // Initialize
+      drawFunctionAndIntegral();
+      const jacobian = calculateJacobian();
+      displayJacobian(jacobian);
+
+      // Camera position
+      camera.position.z = 15;
+
+      // Animation loop
+      const animate = () => {
+        requestAnimationFrame(animate);
+        renderer.render(scene, camera);
+      };
+      animate();
+    </script>
+  </body>
+</html>
